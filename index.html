@@ -402,8 +402,8 @@
         // KONFIGURASI GOOGLE SHEETS
         // ==============================
         
-        // GANTI URL INI DENGAN URL APPS SCRIPT ANDA
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID_HERE/exec';
+        // URL Google Apps Script Anda
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw565ZKb5OwrCS9L9qYp79oa6gRlmUMUOHvMAf61f5Sye__ZjNvuKK-T4FTg-TClaY/exec';
         
         // Data stand
         const stands = [
@@ -462,11 +462,6 @@
 
         // Fungsi utama untuk kirim data ke Google Sheets
         async function sendToGoogleSheets(data) {
-            // Validasi URL script
-            if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes('YOUR_SCRIPT_ID_HERE')) {
-                throw new Error('Google Script URL belum dikonfigurasi');
-            }
-
             // Cek koneksi internet
             if (!navigator.onLine) {
                 throw new Error('Tidak ada koneksi internet');
@@ -568,6 +563,8 @@
             if (failedItems.length > 0) {
                 showAlert(`${failedItems.length} data gagal sync setelah 3 percobaan`, 'warning');
             }
+            
+            updateSyncStatus();
         }
 
         // Update sync status
@@ -726,8 +723,6 @@
             loadingText.textContent = text;
             loadingSpinner.style.display = show ? 'block' : 'none';
         }
-
-        // ... (fungsi-fungsi lainnya tetap sama seperti sebelumnya)
 
         // Simpan data ke localStorage
         function saveUserData() {
@@ -921,9 +916,179 @@
             showAlert('Anda telah logout!', 'info');
         }
 
-        // Render grafik (fungsi tetap sama)
+        // Render grafik
         function renderCharts() {
-            // ... kode render charts sama seperti sebelumnya
+            // Hancurkan chart sebelumnya jika ada
+            Object.values(charts).forEach(chart => {
+                if (chart) chart.destroy();
+            });
+
+            const userRatings = userData[currentUser]?.ratings || {};
+            
+            // Data untuk grafik
+            const jurusanData = calculateJurusanAverages(userRatings);
+            const criteriaData = calculateCriteriaAverages(userRatings);
+            const rankingData = calculateRanking(userRatings);
+
+            // Grafik Rating per Jurusan
+            const jurusanCtx = document.getElementById('jurusanChart').getContext('2d');
+            charts.jurusan = new Chart(jurusanCtx, {
+                type: 'bar',
+                data: {
+                    labels: jurusanData.labels,
+                    datasets: [{
+                        label: 'Rating Rata-rata',
+                        data: jurusanData.averages,
+                        backgroundColor: [
+                            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
+                            '#9966FF', '#FF9F40', '#FF6384'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 5
+                        }
+                    }
+                }
+            });
+
+            // Grafik Distribusi Kriteria
+            const criteriaCtx = document.getElementById('criteriaChart').getContext('2d');
+            charts.criteria = new Chart(criteriaCtx, {
+                type: 'radar',
+                data: {
+                    labels: ['Display & Kebersihan', 'Pelayanan', 'Kreativitas', 'Rasa'],
+                    datasets: [{
+                        label: 'Rating Rata-rata',
+                        data: [
+                            criteriaData.stand,
+                            criteriaData.pelayanan,
+                            criteriaData.konten,
+                            criteriaData.rasa
+                        ],
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        pointBackgroundColor: 'rgba(54, 162, 235, 1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 5
+                        }
+                    }
+                }
+            });
+
+            // Grafik Ranking
+            const rankingCtx = document.getElementById('rankingChart').getContext('2d');
+            charts.ranking = new Chart(rankingCtx, {
+                type: 'bar',
+                data: {
+                    labels: rankingData.labels,
+                    datasets: [{
+                        label: 'Rating',
+                        data: rankingData.ratings,
+                        backgroundColor: rankingData.ratings.map((rating, index) => 
+                            index < 3 ? '#28a745' : '#17a2b8'
+                        )
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            max: 5
+                        }
+                    }
+                }
+            });
+        }
+
+        // Hitung rata-rata per jurusan
+        function calculateJurusanAverages(ratings) {
+            const jurusanTotals = {};
+            const jurusanCounts = {};
+            
+            stands.forEach(stand => {
+                if (!jurusanTotals[stand.category]) {
+                    jurusanTotals[stand.category] = 0;
+                    jurusanCounts[stand.category] = 0;
+                }
+                
+                if (ratings[stand.id]) {
+                    const avg = calculateAverageRating(ratings[stand.id].ratings);
+                    jurusanTotals[stand.category] += avg;
+                    jurusanCounts[stand.category]++;
+                }
+            });
+            
+            const labels = [];
+            const averages = [];
+            
+            Object.keys(jurusanTotals).forEach(jurusan => {
+                if (jurusanCounts[jurusan] > 0) {
+                    labels.push(jurusan);
+                    averages.push(jurusanTotals[jurusan] / jurusanCounts[jurusan]);
+                }
+            });
+            
+            return { labels, averages };
+        }
+
+        // Hitung rata-rata per kriteria
+        function calculateCriteriaAverages(ratings) {
+            const criteriaTotals = { stand: 0, pelayanan: 0, konten: 0, rasa: 0 };
+            const criteriaCounts = { stand: 0, pelayanan: 0, konten: 0, rasa: 0 };
+            
+            Object.values(ratings).forEach(rating => {
+                Object.keys(criteriaTotals).forEach(criterion => {
+                    if (rating.ratings[criterion]) {
+                        criteriaTotals[criterion] += rating.ratings[criterion];
+                        criteriaCounts[criterion]++;
+                    }
+                });
+            });
+            
+            const averages = {};
+            Object.keys(criteriaTotals).forEach(criterion => {
+                averages[criterion] = criteriaCounts[criterion] > 0 ? 
+                    criteriaTotals[criterion] / criteriaCounts[criterion] : 0;
+            });
+            
+            return averages;
+        }
+
+        // Hitung ranking stand
+        function calculateRanking(ratings) {
+            const standRatings = [];
+            
+            stands.forEach(stand => {
+                if (ratings[stand.id]) {
+                    const avg = calculateAverageRating(ratings[stand.id].ratings);
+                    standRatings.push({
+                        name: stand.name,
+                        rating: avg,
+                        jurusan: stand.category
+                    });
+                }
+            });
+            
+            // Urutkan dari rating tertinggi ke terendah
+            standRatings.sort((a, b) => b.rating - a.rating);
+            
+            const labels = standRatings.map(stand => stand.name);
+            const ratingsData = standRatings.map(stand => stand.rating);
+            
+            return { labels, ratings: ratingsData };
         }
 
         // Inisialisasi
